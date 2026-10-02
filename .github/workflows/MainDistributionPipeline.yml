@@ -1,5 +1,8 @@
 #
-# This workflow calls the main distribution pipeline from DuckDB to build, test and (optionally) release the extension
+# This workflow calls the main distribution pipeline from DuckDB to build and test the extension.
+#
+# UniqueVision fork: builds the v1.5.6 extension with the equality delete fixes for linux only.
+# The binaries are NOT deployed anywhere; download them from the workflow run artifacts.
 #
 name: Main Extension Distribution Pipeline
 on:
@@ -17,20 +20,7 @@ jobs:
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5-variegata
     with:
       extension_name: iceberg
-      duckdb_version: v1.5.5
-      ci_tools_version: v1.5.5
-      exclude_archs: 'windows_amd64_mingw'
+      duckdb_version: v1.5.6
+      ci_tools_version: v1.5.6
+      exclude_archs: 'linux_amd64_musl;linux_arm64_musl;osx_amd64;osx_arm64;windows_amd64;windows_arm64;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads'
       extra_toolchains: 'python3'
-
-  duckdb-stable-deploy:
-    name: Deploy extension binaries
-    needs: duckdb-stable-build
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_deploy.yml@v1.5-variegata
-    secrets: inherit
-    with:
-      extension_name: iceberg
-      duckdb_version: v1.5.5
-      ci_tools_version: v1.5.5
-      exclude_archs: 'windows_amd64_mingw'
-      deploy_latest: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}
-      deploy_versioned: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}

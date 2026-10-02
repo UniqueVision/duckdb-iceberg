@@ -986,12 +986,19 @@ IcebergMultiFileList::GetEqualityDeletesForFile(const BoundIcebergManifestEntry 
 					continue;
 				}
 				D_ASSERT(file.partition_info.size() == data_file.partition_info.size());
+				bool partition_matches = true;
 				for (idx_t i = 0; i < file.partition_info.size(); i++) {
-					if (file.partition_info[i] != data_file.partition_info[i]) {
+					//! NULL-safe comparison: partition values can be NULL, and `!=` on Value throws for NULL
+					if (file.partition_info[i].field_id != data_file.partition_info[i].field_id ||
+					    !Value::NotDistinctFrom(file.partition_info[i].value, data_file.partition_info[i].value)) {
 						//! Same partition spec id, but the partitioning information doesn't match, delete file doesn't
 						//! apply.
-						continue;
+						partition_matches = false;
+						break;
 					}
+				}
+				if (!partition_matches) {
+					continue;
 				}
 			}
 			result.insert(result.end(), file.rows.begin(), file.rows.end());
@@ -1217,6 +1224,19 @@ void IcebergMultiFileList::ScanDeleteFiles(const vector<MultiFileColumnDefinitio
 		auto &bound_manifest_entry = shared_state->delete_manifest_entries[shared_state->next_delete_entry_to_process];
 		auto &manifest_entry = bound_manifest_entry.entry;
 		auto &data_file = manifest_entry.data_file;
+		//! Skip delete files whose partition cannot match the pushed down filters (same selection as
+		//! GetDeleteManifestEntries). A delete file only applies to data files of the same partition, and those
+		//! data files are pruned by the same filters, so nothing that is scanned can be affected by it.
+		//! Unpartitioned (global) delete files have no partition info and are never skipped here.
+		auto manifest_idx = bound_manifest_entry.manifest_file_idx;
+		auto &manifest_file = delete_manifests[manifest_idx].entry.file;
+		if (!delete_manifest_matches[manifest_idx]) {
+			continue;
+		}
+		if (!table_filters.filters.empty() &&
+		    !FileMatchesFilter(manifest_file, manifest_entry, IcebergManifestContentType::DELETE)) {
+			continue;
+		}
 		if (StringUtil::CIEquals(data_file.file_format, "parquet")) {
 			ScanDeleteFile(bound_manifest_entry, global_columns, global_column_ids, projection_ids);
 		} else if (StringUtil::CIEquals(data_file.file_format, "puffin")) {
